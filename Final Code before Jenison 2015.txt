@@ -1,0 +1,597 @@
+﻿//Autonomous Functions
+
+
+
+// Look Up Table for Motor Values
+// Used for the purpose of linearzing motor speed
+const unsigned int TRUESPEED[128] = {
+    0, 0, 0, 0, 0, 0 ,0 ,0 ,0 ,20,
+	20,21,21,21,22,22,22,23,24,24,
+	25,25,25,25,26,27,27,28,28,28,
+	28,29,30,30,30,31,31,32,32,32,
+	33,33,34,34,35,35,35,36,36,37,
+	37,37,37,38,38,39,39,39,40,40,
+	41,41,42,42,43,44,44,45,45,46,
+	46,47,47,48,48,49,50,50,51,52,
+	52,53,54,55,56,57,57,58,59,60,
+	61,62,63,64,65,66,67,67,68,70,
+	71,72,72,73,74,76,77,78,79,79,
+	80,81,83,84,84,86,86,87,87,88,
+	88,89,89,90,127,127,127
+};
+ /**
+ ** This variable return 1 or a -1 for other codes.
+ *@author Alex Miller <amm@albion.edu>
+ *@since 2015-12-2
+ *
+*/
+ int signOf(int value)
+ {
+ 	int sign = (abs(value) / value);
+
+ 	return sign;
+ }
+
+ /**
+ ** This function sets the motors for the autonomous functions and tasks.
+ *@author Alex Miller <amm@albion.edu>
+ 
+ *
+*/
+ void autonSetMotors(int motor, int speed)
+ {
+ 	if (speed > 127)	speed = 127;
+ 	if (speed < -127)	speed = -127;
+
+		//Abs values allow the function/motor speed to retain its sign (since TRUESPEED values are all positive)
+		//The "- 1" matches the code to the array
+ 	vexMotorSet(motor, signOf(speed) * TRUESPEED[abs(speed) - 1]);
+ }
+
+
+ /**
+ ** This function allows the robot to move forward a given centimeter value in autonomous, using PID techniques.
+ *@author Derek Cheyne <dkcheyne399@gmail.com>
+ *
+*/
+ void moveForward(float targetDistance)
+ {
+ 	vexMotorPositionSet(MOT_NORTH_EAST, 0);
+ 	vexMotorPositionSet(MOT_NORTH_WEST, 0);
+
+		float ticksToDistance = (targetDistance / .083705);  // Check Derek's Paper for 2015 Conversion rates (answer is cm forward)
+		
+		
+
+		const float pValue = 0.35;                              //These values converts the error into workable units
+		const float iValue = 0.3;                               //Remeber can be changed to make sure that it is actually working
+		//const float dValue = 3;                                 //See http://blog.oscarliang.net/quadcopter-pid-explained-tuning/
+		float error, speed, iError = 0;                          
+		//float wasHere = 0;
+
+		int i = 1;                                              //i is the number of times the robot has hit correct location
+		bool hitTarget = false;		                            //true or false depending on if robot has hit target destination
+		
+	    while(!hitTarget && !(escapeTime()) )	//while robot has not hit target and kill switch is not activated
+	    {
+
+
+			error = (targetDistance * .083705) - ticksToDistance;				//How far off the right encoder's count is from the targetDistance count
+			//double dError = ticksToDistance - wasHere;
+			speed = error * pValue + iError * iValue; //ß+ dError * dValue;
+
+			if (abs(speed) <= 123) 
+			{
+					iError += error * 0.025;		//iError is the area under error curve (the "current")
+				}
+				else 
+				{
+					speed = 123;
+				}
+
+			speed *= signOf(targetDistance);							//If number of cm is negative, then speed of motors will be (-) for going backward
+
+			//Setting Motors (With Corrections for Straightening)
+			autonSetMotors(MOT_NORTH_EAST, -(speed + 4) );
+			autonSetMotors(MOT_NORTH_WEST, (speed + 4) );
+			autonSetMotors(MOT_SOUTH_EAST, -(speed + 4) );
+			autonSetMotors(MOT_SOUTH_WEST, (speed + 4) );
+
+			if(ticksToDistance <=  targetDistance + 6 && ticksToDistance >= targetDistance - 6)
+			{	
+					i += 1;											//Each time it hits target, 1 is added to i
+					if (i > 2) hitTarget = true;					
+				}
+			else i = 1;											//If robot does not hit target 7 times in a row, i becomes 1
+
+			//wasHere = ticksToDistance;
+			vexSleep(25);
+		}
+	}
+/**
+ ** This function allows the robot to move forward a given amount of centimeters in autonomous. This does not involve the PID techniques.
+ *@author Annelise Comai <annelise871@aol.com>
+ *
+*/
+ void moveForwardNoPID(int targetDistance)
+ {
+ 	vexMotorPositionSet(MOT_NORTH_EAST, 0);
+ 	vexMotorPositionSet(MOT_NORTH_WEST, 0);
+
+		float ticksToDistance = (targetDistance / .083705); //See Dereks Paper for Conversion from encoder counts to distance 
+
+		float intialDegree = vexGyroGet();
+
+		while(vexMotorPositionGet(MOT_NORTH_WEST) < (ticksToDistance) && (vexControllerGet(Btn7L) != 1)) // Get to 85% of the distance at "full" speed along with angle helping  
+		{
+
+            vexMotorSet(MOT_NORTH_WEST, 120);    // Tell the motors to run forward
+            vexMotorSet(MOT_SOUTH_WEST, 120);
+            vexMotorSet(MOT_SOUTH_EAST, -120);
+            vexMotorSet(MOT_NORTH_EAST, -120);
+
+            float MotNorthWestSpeed = vexMotorGet(MOT_NORTH_WEST);
+
+            float MotNorthEastSpeed = vexMotorGet(MOT_NORTH_EAST);
+
+            float degreeNow = vexGyroGet();
+            
+            if (degreeNow > intialDegree)
+            {
+            	vexMotorSet(MOT_NORTH_WEST, MotNorthWestSpeed + 1);
+            	vexMotorSet(MOT_NORTH_EAST, MotNorthEastSpeed - 1);
+            }
+            if (degreeNow < intialDegree)
+            {
+            	vexMotorSet(MOT_NORTH_WEST, MotNorthWestSpeed - 1);
+            	vexMotorSet(MOT_NORTH_EAST, MotNorthEastSpeed + 1);	
+            }
+            if (vexControllerGet(Btn7D) = 1)
+            {
+            	break;
+            }
+        }
+		/*
+		while(vexMotorPositionGet(MOT_NORTH_WEST) > (.85 * ticksToDistance) && (MOT_NORTH_WEST < ticksToDistance) && !escapeTime()) // Once it gets to 85% go about 1/4th speed to end 
+		{
+			vexMotorSet(MOT_NORTH_WEST, 30);    // Tell the motors to run forward
+			vexMotorSet(MOT_SOUTH_WEST, 30);
+			vexMotorSet(MOT_SOUTH_EAST, -30);
+			vexMotorSet(MOT_NORTH_EAST, -30);
+
+			float MotNorthWestSpeed = vexMotorGet(MOT_NORTH_WEST);
+
+			float MotNorthEastSpeed = vexMotorGet(MOT_NORTH_EAST);
+
+			float degreeNow = vexGyroGet();
+
+
+            if (degreeNow > intialDegree)
+            {
+              vexMotorSet(MOT_NORTH_WEST, MotNorthWestSpeed + 1);
+              vexMotorSet(MOT_NORTH_EAST, MotNorthEastSpeed - 1);
+            }
+            if (degreeNow < intialDegree)
+            {
+              vexMotorSet(MOT_NORTH_WEST, MotNorthWestSpeed - 1);
+              vexMotorSet(MOT_NORTH_EAST, MotNorthEastSpeed + 1);	
+            }
+
+            if ((MOT_NORTH_WEST >= ticksToDistance) || vexControllerGet(5U))
+            {
+            	break;
+            } 
+            */
+
+
+        }
+
+/*void turnRight(int degrees)
+	{
+		float turnTarget = vexGyroGet() + degrees;		//This is the intended amount of degrees the robot will turn
+		bool hitTarget = false;							//This is whether the robot has hit the turnTarget or not
+		int i = 0;										//This is a counting variable that assists with determining hitTarget's truth value
+		while( ( abs(vexGyroGet()) < abs(vexGyroGet + degrees) ) && !hitTarget)
+		{
+			float currentTurn = vexGyroGet();				//This is the current amount of turn the robot has completed (this is within the while loop so that it refreshes itself)
+			float error = (turnTarget - currentTurn);		//This is the amount of turn the robot still has to go - how "off" of the target the robot is
+			
+			autonSetMotors(MOT_NORTH_EAST, error);			//As the error decreases, the speed that the motors run at will also decrease (robot slows down as it approaches its target)
+			autonSetMotors(MOT_NORTH_WEST, error);
+			autonSetMotors(MOT_SOUTH_EAST, error);
+			autonSetMotors(MOT_SOUTH_WEST, error);
+			if (vexGyroGet() <= (turnTarget + 4) && vexGyroGet() >= (turnTarget - 4) )
+				{
+					i += 1;
+					if (i >= 4)
+						{
+							hitTarget = true;
+						}
+					else
+						{
+							i = 1;
+						}
+				}
+		}
+	}
+*/
+ /**
+ ** This function allows the robot to turn a given amount of degrees to the right in autonomous without PID techniques.
+ *@author Annelise Comai <annelise871@aol.com>
+ *
+*/
+ void turnRightNoPID(int degrees)
+ {
+ 	int turnCurrent = abs((vexGyroGet() / 10));
+
+		while(abs(vexGyroGet() / 10) < abs((degrees)) && !escapeTime()) // && !escapeTime) //while(abs(vexGyroGet() / 10) < abs((turnCurrent + degrees)) ) //took out turnCurrent
+{
+	vexMotorSet(MOT_NORTH_WEST, 96);
+	vexMotorSet(MOT_SOUTH_WEST, 96);
+	vexMotorSet(MOT_SOUTH_EAST, 96);
+	vexMotorSet(MOT_NORTH_EAST, 96);
+}
+}
+ /**
+ ** This function allows the robot to turn a given amount of degrees to the left in autonomous without PID techniques.
+ *@author Annelise Comai <annelise871@aol.com>
+ *
+*/
+
+ void turnLeftNoPID(int degrees)
+ {  
+
+
+ 	float turnCurrent = (vexGyroGet() / 10);
+
+			while(fabs(vexGyroGet() / 10) < fabs((turnCurrent + degrees - 20 )) && !escapeTime() ) // The -20 is to say once withen 20 degress change motors to move slower to minimize error 
+			{
+				vexMotorSet(MOT_NORTH_WEST, -96);
+				vexMotorSet(MOT_SOUTH_WEST, -96);
+				vexMotorSet(MOT_SOUTH_EAST, -96);
+				vexMotorSet(MOT_NORTH_EAST, -96);
+
+
+				if ((fabs(vexGyroGet()) /10 > fabs((turnCurrent + degrees))) || vexControllerGet(5U))  
+				{
+					break;
+				}
+			}
+			while(fabs(vexGyroGet()) / 10 < fabs((turnCurrent + degrees)) && !escapeTime())
+			{
+				vexMotorSet(MOT_NORTH_WEST, -20);
+				vexMotorSet(MOT_SOUTH_WEST, -20);
+				vexMotorSet(MOT_SOUTH_EAST, -20);
+				vexMotorSet(MOT_NORTH_EAST, -20);
+
+				if ((fabs(vexGyroGet()) /10 > fabs((turnCurrent + degrees))) || vexControllerGet(5U))  
+				{
+					break;
+				}
+			}
+		}
+/**
+ ** This function allows the robot to autonoumously run the intake mechanism and bring the ball through the elevator and the launcher.
+ *@author Maycee McClure <maymcc01@gmail.com>
+ *
+*/
+ /* void autonIntakeBall(void) 
+ {
+  	isIntakeOn = true;																//Turns intake on
+ 			while(vexMotorPositionGet(MOT_ELEVATOR) < 800 && !escapeTime())			//Brings single ball up elevator and hopefully through launcher
+ 			{
+ 				chThdSleepMilliseconds(25);
+ 			}
+ 			isIntakeOn = false;	
+ 		}
+/**
+ ** This task governs the intake during both autonomous and driver control based on the isIntakeOn global variable.
+ *@author Annelise Comai <annelise871@aol.com>
+ *
+*/
+ /*
+ task autonRunIntake(void *arg)
+ {
+ 	(void)arg;
+ 	vexTaskRegister("autonIntake");
+ 	while(1)
+ 	{
+ 		
+		//while(!escapeTime)
+		//{
+ 			if(isIntakeOn) 	
+ 			{
+
+ 				vexMotorSet(MOT_INTAKE, 127);
+ 				vexMotorSet(MOT_ELEVATOR, 127);
+ 			}
+ 			else {
+
+ 				vexMotorSet(MOT_INTAKE, 0);
+ 				vexMotorSet(MOT_ELEVATOR, 0);
+
+ 			}
+ 	//	}
+
+		//}
+ 	}
+ }
+
+
+
+/**
+ ** This function was orginally supposed to "Run Intake and Start Launcher from red square to launch pre-loaded balls" in autonomous. It does not work because the motors will autmoatically start at 80, so the intake will start with the launcher.
+ *@author Maycee McClure <maymcc01@gmail.com>
+ *
+*/
+// Run Intake and Start Launcher from red square to launch pre-loaded balls
+/* void runIntakeLauncher(void)
+ {
+
+		isLaunchOn = true; //starts launcher
+		while (vexMotorGet(MOT_FLY_ONE) < 80 && !escapeTime()) 
+		{ //once fly wheel motors are at full speed
+			isIntakeOn = false; //starts intake
+		}
+		isIntakeOn = true;
+
+	}
+
+
+/**
+ ** This function will run the intake and launcher to launch the four balls that are placed in the robot before a match.
+ *@author Analise Comai
+ *
+*/
+/*
+ void autonShootFourBalls(void) {
+
+ 			//////////This is code for an auton program focused on launching the four preloads (currently written for three).  Place robot on starting tile directly facing goal with three balls in the intake, with the ball furthest in pressed up against the Moibus strip chain guard box (this auton works with no balls actually in elevator, just one at the bottom of the elevator, this can be changed later)
+//while(!escapeTime)
+//{
+
+ 	vexMotorPositionSet(MOT_ELEVATOR, 0);
+
+ 			//Warm Up Launcher
+ 			vexMotorSet(MOT_FLY_ONE, 127);
+ 			vexMotorSet(MOT_FLY_TWO, 127);
+ 			vexMotorSet(MOT_FLY_THREE, 127);
+ 			vexMotorSet(MOT_FLY_FOUR, 127);									//Turns on launcher (make sure that autonShootBalls task is started before trying this)
+ 			
+ 			chThdSleepMilliseconds(2500);						//Time needed for launcher to get up to full speed
+ 			vexMotorPositionSet(MOT_ELEVATOR, 0);				//Resets encoder on elevator motor
+
+ 			//Shooting the first ball
+			vexMotorSet(MOT_INTAKE, 127);
+			vexMotorSet(MOT_ELEVATOR, 127);															//Turns on the intake and the elevator motors (make sure that autonRunIntake task is started before trying this)
+ 			autonIntakeBall(); 									//The elevator motor will run and the elevator encoder will count up to 800 (this is approx. number of elevator encoder counts needed to get ball at the bottom of the elevator shaft up the elevator and through launcher without the other balls coming up the elevator getting stuck on the bottom wheel of the launcher - this could be changed if we shoved a ball halfway up the elevator shaft as well)
+ 																//Tells robot to keep doing what it's doing until encoder reaches its designated value
+ 			isIntakeOn = false;									//Turns off the intake so that the launcher motors can get back up to speed after launching ball
+ 			vexMotorPositionSet(MOT_ELEVATOR, 0);				//Resets elevator encoder
+
+ 			chThdSleepMilliseconds(2500);						//Time needed for launcher motors to get back up to speed
+ 			
+ 			//Second ball
+ 			autonIntakeBall(); 									//Turns off intake after ball is launched
+
+ 			vexMotorPositionSet(MOT_ELEVATOR, 0);				//Resets elevator encoder
+
+ 			chThdSleepMilliseconds(2500);						//Launcher motors get back up to speed
+
+ 			//Third Ball
+ 				autonIntakeBall();								//Turns on intake
+ 																//Brings single ball up elevator
+
+ 			//Stop everything
+ 			isIntakeOn = false;									//Stops intake
+ 			isLaunchOn = false;									//Stops launcher
+
+ 		}
+
+ /* void autonShootFourBallsNoTasks(void) {
+
+ //////////This is code for an auton program focused on launching the four preloads (currently written for three).  Place robot on starting tile directly facing goal with three balls in the intake, with the ball furthest in pressed up against the Moibus strip chain guard box (this auton works with no balls actually in elevator, just one at the bottom of the elevator, this can be changed later)
+//while(!escapeTime)
+//{
+
+ 			vexMotorPositionSet(MOT_ELEVATOR, 0);
+
+ 			//Warm Up Launcher
+ 			vexMotorSet(MOT_FLY_ONE, 127);
+ 			vexMotorSet(MOT_FLY_TWO, 127);
+ 			vexMotorSet(MOT_FLY_THREE, 127);
+ 			vexMotorSet(MOT_FLY_FOUR, 127);											//Turns on launcher
+ 			
+ 			chThdSleepMilliseconds(2500);											//Time needed for launcher to get up to full speed
+ 			vexMotorPositionSet(MOT_ELEVATOR, 0);									//Resets encoder on elevator motor
+
+ 			//Shooting the first ball
+			vexMotorSet(MOT_INTAKE, 127);
+			vexMotorSet(MOT_ELEVATOR, 127);											//Turns on the intake and the elevator motors (make sure that autonRunIntake task is started before trying this)
+ 			while(vexMotorPositionGet(MOT_ELEVATOR) < 800 && !escapeTime())			//Brings single ball up elevator and hopefully through launcher
+ 			{
+ 				chThdSleepMilliseconds(25);
+ 			} 																		//The elevator motor will run and the elevator encoder will count up to 800 (this is approx. number of elevator encoder counts needed to get ball at the bottom of the elevator shaft up the elevator and through launcher without the other balls coming up the elevator getting stuck on the bottom wheel of the launcher - this could be changed if we shoved a ball halfway up the elevator shaft as well)
+ 			vexMotorSet(MOT_INTAKE, 0);
+			vexMotorSet(MOT_ELEVATOR, 0);											//Tells robot to keep doing what it's doing until encoder reaches its designated value
+ 																					//Turns off the intake so that the launcher motors can get back up to speed after launching ball
+ 			vexMotorPositionSet(MOT_ELEVATOR, 0);									//Resets elevator encoder
+
+ 			chThdSleepMilliseconds(2500);											//Time needed for launcher motors to get back up to speed
+ 			
+ 			//Second ball
+ 			vexMotorSet(MOT_INTAKE, 127);
+			vexMotorSet(MOT_ELEVATOR, 127);											//Turns on the intake and the elevator motors (make sure that autonRunIntake task is started before trying this)
+ 			while(vexMotorPositionGet(MOT_ELEVATOR) < 800 && !escapeTime())			//Brings single ball up elevator and hopefully through launcher
+ 			{
+ 				chThdSleepMilliseconds(25);
+ 			} 																		//The elevator motor will run and the elevator encoder will count up to 800 (this is approx. number of elevator encoder counts needed to get ball at the bottom of the elevator shaft up the elevator and through launcher without the other balls coming up the elevator getting stuck on the bottom wheel of the launcher - this could be changed if we shoved a ball halfway up the elevator shaft as well)
+ 			vexMotorSet(MOT_INTAKE, 0);
+			vexMotorSet(MOT_ELEVATOR, 0);											//Turns off intake after ball is launched
+
+ 			vexMotorPositionSet(MOT_ELEVATOR, 0);									//Resets elevator encoder
+
+ 			chThdSleepMilliseconds(2500);											//Launcher motors get back up to speed
+
+ 			//Third Ball
+ 			vexMotorSet(MOT_INTAKE, 127);
+			vexMotorSet(MOT_ELEVATOR, 127);											//Turns on the intake and the elevator motors (make sure that autonRunIntake task is started before trying this)
+ 			while(vexMotorPositionGet(MOT_ELEVATOR) < 800 && !escapeTime())			//Brings single ball up elevator and hopefully through launcher
+ 			{
+ 				chThdSleepMilliseconds(25);
+ 			} 																		//The elevator motor will run and the elevator encoder will count up to 800 (this is approx. number of elevator encoder counts needed to get ball at the bottom of the elevator shaft up the elevator and through launcher without the other balls coming up the elevator getting stuck on the bottom wheel of the launcher - this could be changed if we shoved a ball halfway up the elevator shaft as well)
+ 			vexMotorSet(MOT_INTAKE, 0);
+			vexMotorSet(MOT_ELEVATOR, 0);											//Turns on intake
+ 																					//Brings single ball up elevator
+
+ 			//Stop everything
+ 			vexMotorSet(MOT_INTAKE, 0);
+			vexMotorSet(MOT_ELEVATOR, 0);											//Stops intake
+ 			
+ 			vexMotorSet(MOT_FLY_ONE, 0);
+ 			vexMotorSet(MOT_FLY_TWO, 0);
+ 			vexMotorSet(MOT_FLY_THREE, 0);
+ 			vexMotorSet(MOT_FLY_FOUR, 0);											//Stops launcher
+
+ 		}
+ 	//}
+ /**
+ ** This task allows the robot to launch balls at speed = 127 when called in autonomous.
+ *@author Annelise Comai <annelise871@aol.com>
+ *
+*/
+ task autonShootBalls(void *arg)
+ {
+ 	(void)arg;
+ 	vexTaskRegister("autonLauncher");
+ 	while(1)
+ 	{
+ 		while(!escapeTime())
+ 		{
+ 			float speed = vexMotorGet(MOT_FLY_LEFT);			
+		if(isLaunchOn == true)									//If the global isLaunchOn variable is declared to be true within the function
+		{
+			vexMotorSet(MOT_FLY_LEFT, 127);						//Set all of the launch motors to 127 (can be changed later if needed)
+			vexMotorSet(MOT_FLY_RIGHT, 127);
+			
+
+ 					//chThdSleepMilliseconds(time);//
+		}
+
+
+		else if(speed > 0)										//Else, slow down the launcher motors
+		{
+			speed -= 3;
+			chThdSleepMilliseconds(100);
+			vexMotorSet(MOT_FLY_ONE, speed);
+			vexMotorSet(MOT_FLY_TWO, speed);
+			vexMotorSet(MOT_FLY_THREE, speed);
+			vexMotorSet(MOT_FLY_FOUR, speed);
+		}
+	}
+
+	/*	else {
+			
+		vexMotorSet(MOT_FLY_ONE,0);
+		vexMotorSet(MOT_FLY_TWO,0);
+		vexMotorSet(MOT_FLY_THREE,0);
+		vexMotorSet(MOT_FLY_FOUR,0);
+		}
+	*/
+	}
+}
+
+
+
+
+
+
+
+ /**
+ ** This task allows the robot to launch balls at speed = 120 when called in autonomous.
+ *@author Annelise Comai <annelise871@aol.com>
+ *
+*/
+ task autonShootBalls120(void *arg)
+ {
+ 	(void)arg;
+ 	vexTaskRegister("autonLauncher");
+ 	while(1)
+ 	{
+ 		//while(!escapeTime())
+ 		//{
+ 		float speed = vexMotorGet(MOT_FLY_ONE);			
+		
+		if(isLaunchOn == true)									//If the global isLaunchOn variable is declared to be true within the function
+		{
+			vexMotorSet(MOT_FLY_ONE, 120);						//Set all of the launch motors to 120
+			vexMotorSet(MOT_FLY_TWO, 120);
+			vexMotorSet(MOT_FLY_THREE, 120);
+			vexMotorSet(MOT_FLY_FOUR, 120);
+
+ 					//chThdSleepMilliseconds(time);//
+		}
+
+
+		else if(speed > 0)										//Else, slow down the launcher motors
+		{
+			speed -= 3;
+			chThdSleepMilliseconds(100);
+			vexMotorSet(MOT_FLY_ONE, speed);
+			vexMotorSet(MOT_FLY_TWO, speed);
+			vexMotorSet(MOT_FLY_THREE, speed);
+			vexMotorSet(MOT_FLY_FOUR, speed);
+		}
+	//}
+	}
+}
+
+
+
+
+
+
+
+  /**
+ ** This function will run our entire strategy for the autonomous period using the functions above.
+ *@author Maycee McClure <maymcc01@gmail.com>
+ *
+*/
+  //Complete Autonomous
+  void allAuton(void) 											//See Albion College Notebook on Auton for written instructions. Need to test.
+  {
+  	autonShootFourBalls();
+  	moveForwardNoPID(60);
+  	turnRightNoPID(90);
+  	moveForwardNoPID(30);
+  	turnRightNoPID(45);
+	moveForwardNoPID(50); 										//only moving 50, don't wanna hit wall
+	autonIntakeBall(); 											//need to do this four times
+	chThdSleepMilliseconds(250); 								//wait to take up next one
+	autonIntakeBall();
+	chThdSleepMilliseconds(250);
+	autonIntakeBall();
+	chThdSleepMilliseconds(250);
+	autonIntakeBall();
+	vexMotorSet(MOT_NORTH_WEST, -127);
+	vexMotorSet(MOT_SOUTH_WEST, -127);
+	vexMotorSet(MOT_SOUTH_EAST, -127);
+	vexMotorSet(MOT_NORTH_EAST, -127);
+	turnLeftNoPID(135);
+	autonShootFourBalls();
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
